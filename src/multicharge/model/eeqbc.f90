@@ -436,10 +436,10 @@ contains
             do img = 1, wsc%nimg(jat, iat)
                vec = mol%xyz(:, iat) - mol%xyz(:, jat) - wsc%trans(:, wsc%tridx(img, jat, iat))
                call get_cmat_pair(mol, self%kbc, ctmp, vec, rvdw, capi, capj)
-               call get_amat_dir_3d(vec, gam, alpha, dtrans, dtmp)
+               call get_amat_dir_3d(vec, gam, alpha, dtrans, ctmp, dtmp)
                call get_amat_rec_3d(vec, vol, alpha, rtrans, rtmp)
-               amat(jat, iat) = amat(jat, iat) + ctmp*(dtmp + rtmp)*wsw
-               amat(iat, jat) = amat(iat, jat) + ctmp*(dtmp + rtmp)*wsw
+               amat(jat, iat) = amat(jat, iat) + (dtmp + rtmp)*wsw
+               amat(iat, jat) = amat(iat, jat) + (dtmp + rtmp)*wsw
             end do
          end do
 
@@ -449,13 +449,15 @@ contains
          do img = 1, wsc%nimg(iat, iat)
             vec = wsc%trans(:, wsc%tridx(img, iat, iat))
             ctmp = cmat_diag(iat, img)
-            call get_amat_dir_3d(vec, gam, alpha, dtrans, dtmp)
+            call get_amat_dir_3d(vec, gam, alpha, dtrans, ctmp, dtmp)
             call get_amat_rec_3d(vec, vol, alpha, rtrans, rtmp)
             amat(iat, iat) = amat(iat, iat) + ctmp*(dtmp + rtmp)*wsw
          end do
          ! Effective hardness
-         dtmp = self%eta(izp) + self%kqeta(izp)*qloc(iat) + sqrt2pi/radi
-         amat(iat, iat) = amat(iat, iat) + cmat_diag(iat, 1)*dtmp + 1.0_wp
+         ! NOTE: not sure whether this belongs here or in the image loop
+         ! this should be the contribution for T=0 since this should not have been computed above
+         dtmp = cmat_diag(iat, 1)*(self%eta(izp) + self%kqeta(izp)*qloc(iat) + sqrt2pi/radi)
+         amat(iat, iat) = amat(iat, iat) + dtmp + 1.0_wp - 2*alpha/sqrtpi
       end do
 
       amat(mol%nat + 1, 1:mol%nat + 1) = 1.0_wp
@@ -464,11 +466,12 @@ contains
 
    end subroutine get_amat_3d
 
-   subroutine get_amat_dir_3d(rij, gam, alp, trans, amat)
+   subroutine get_amat_dir_3d(rij, gam, alp, trans, cmat, amat)
       real(wp), intent(in) :: rij(3)
       real(wp), intent(in) :: gam
       real(wp), intent(in) :: alp
       real(wp), intent(in) :: trans(:, :)
+      real(wp), intent(in) :: cmat
       real(wp), intent(out) :: amat
 
       integer :: itr
@@ -480,7 +483,7 @@ contains
          vec(:) = rij + trans(:, itr)
          r1 = norm2(vec)
          if (r1 < eps) cycle
-         tmp = erf(gam*r1)/r1 - erf(alp*r1)/r1
+         tmp = cmat*erf(gam*r1)/r1 - erf(alp*r1)/r1
          amat = amat + tmp
       end do
 
